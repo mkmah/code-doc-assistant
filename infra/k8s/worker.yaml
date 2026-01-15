@@ -1,0 +1,97 @@
+# Temporal Worker Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: code-doc-assistant
+  labels:
+    app: worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      containers:
+      - name: worker
+        image: code-doc-worker:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: ANTHROPIC_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: code-doc-secrets
+              key: ANTHROPIC_API_KEY
+        - name: JINA_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: code-doc-secrets
+              key: JINA_API_KEY
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: code-doc-secrets
+              key: OPENAI_API_KEY
+        - name: TEMPORAL_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: code-doc-config
+              key: TEMPORAL_HOST
+        - name: TEMPORAL_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: code-doc-config
+              key: TEMPORAL_PORT
+        - name: CHROMADB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: code-doc-config
+              key: CHROMADB_HOST
+        - name: CHROMADB_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: code-doc-config
+              key: CHROMADB_PORT
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: code-doc-config
+              key: LOG_LEVEL
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+---
+# HorizontalPodAutoscaler for Worker
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: worker-hpa
+  namespace: code-doc-assistant
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: worker
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80

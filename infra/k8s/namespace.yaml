@@ -1,0 +1,8 @@
+# Namespace for Code Documentation Assistant
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: code-doc-assistant
+  labels:
+    name: code-doc-assistant
+    app: code-doc-assistant

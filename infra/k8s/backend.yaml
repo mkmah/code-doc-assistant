@@ -1,0 +1,171 @@
+# Backend API Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: code-doc-assistant
+  labels:
+    app: backend
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+      - name: backend
+        image: code-doc-backend:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+          name: http
+        env:
+        - name: ANTHROPIC_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: code-doc-secrets
+              key: ANTHROPIC_API_KEY
+        - name: JINA_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: code-doc-secrets
+              key: JINA_API_KEY
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: code-doc-secrets
+              key: OPENAI_API_KEY
+        - name: TEMPORAL_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: code-doc-config
+              key: TEMPORAL_HOST
+        - name: TEMPORAL_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: code-doc-config
+              key: TEMPORAL_PORT
+        - name: CHROMADB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: code-doc-config
+              key: CHROMADB_HOST
+        - name: CHROMADB_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: code-doc-config
+              key: CHROMADB_PORT
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: code-doc-config
+              key: LOG_LEVEL
+        - name: ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: code-doc-config
+              key: ENVIRONMENT
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+      - name: backend-metrics
+        image: code-doc-backend:latest
+        imagePullPolicy: IfNotPresent
+        command: ["/usr/bin/python", "-m", "prometheus_client", "start_http_server"]
+        args: ["9090"]
+        ports:
+        - containerPort: 9090
+          name: metrics
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: code-doc-assistant
+  labels:
+    app: backend
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8000
+    targetPort: 8000
+    name: http
+  - port: 9090
+    targetPort: 9090
+    name: metrics
+  selector:
+    app: backend
+---
+# HorizontalPodAutoscaler for Backend
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: backend-hpa
+  namespace: code-doc-assistant
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: backend
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+---
+# Ingress for Backend API
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: backend-ingress
+  namespace: code-doc-assistant
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+spec:
+  tls:
+  - hosts:
+    - api.code-doc-assistant.com
+    secretName: backend-tls
+  rules:
+  - host: api.code-doc-assistant.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: backend
+            port:
+              number: 8000
