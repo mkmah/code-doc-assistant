@@ -1,4 +1,4 @@
-# Lead Gen AI Engineer - Assignment v2
+# Code Doc Assistant
 
 ## Quick Setup Instruction
 
@@ -105,7 +105,7 @@ To deploy this scalable architecture to a cloud provider (AWS/GCP/Azure) using K
 
 1.  **Containerize**: Build optimized Docker images for `backend`, `frontend`, and `worker`.
     *   `docker build -t app-backend ./backend`
-    *   `docker build -t app-worker ./temporal`
+    *   `docker build -t app-worker ./backend -f Dockerfile.worker`
 2.  **Infrastructure Provisioning (Terraform/Crossplane)**:
     *   Provision a Managed K8s Cluster (EKS/AKS/GKE).
     *   Provision Managed PostgreSQL (RDS/Cloud SQL).
@@ -161,7 +161,7 @@ To deploy this scalable architecture to a cloud provider (AWS/GCP/Azure) using K
 *   **Type Safety**: Strictly adhered to Python type hinting. Used `mypy` for static analysis to catch bugs early.
 *   **Linting & Formatting**: Used `ruff` for an extremely fast, unified linting/formatting pipeline.
 *   **Dependency Management**: Used `uv` (faster replacement for pip/poetry) to manage dependencies implementation, ensuring reproducible builds.
-*   **Infrastructure as Code**: `docker-compose` is the source of truth for local dev.
+*   **Infrastructure as Code**: `docker` is the source of truth for local dev.
 *   **Skipped**:
     *   **Unit Test Coverage**: Aimed for critical paths, but overall coverage is not at 100% due to time constraints.
     *   **E2E Testing**: Full browser-based testing (Playwright) was skipped in favor of API integration tests.
