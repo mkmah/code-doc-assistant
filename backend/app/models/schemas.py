@@ -5,7 +5,7 @@ from enum import Enum
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 # =============================================================================
 # Enums
@@ -55,6 +55,19 @@ class IngestionStep(str, Enum):
     EMBEDDING = "embedding"
     INDEXING = "indexing"
     COMPLETE = "complete"
+
+
+class SecretType(str, Enum):
+    """Types of secrets that can be detected."""
+
+    AWS_ACCESS_KEY = "aws_access_key"
+    AWS_SECRET_KEY = "aws_secret_key"
+    API_KEY = "api_key"
+    BEARER_TOKEN = "bearer_token"
+    GITHUB_TOKEN = "github_token"
+    SLACK_TOKEN = "slack_token"
+    PASSWORD = "password"
+    PRIVATE_KEY = "private_key"
 
 
 # =============================================================================
@@ -143,6 +156,7 @@ class Codebase(BaseModel):
     workflow_id: str | None
     created_at: datetime
     updated_at: datetime
+    secrets_detected: int = Field(default=0, ge=0, description="Count of secrets found during scanning")
 
 
 class CodebaseListResponse(BaseModel):
@@ -208,6 +222,45 @@ class QuerySession(BaseModel):
     last_active: datetime
     message_count: int = Field(..., ge=0)
     context_chunks: list[UUID] | None = None
+
+
+class ConversationTurn(BaseModel):
+    """A single turn in a conversation."""
+
+    query: str
+    response: str
+    sources: list[Source] = Field(default_factory=list)
+    timestamp: datetime
+
+
+class Session(BaseModel):
+    """Conversation session with history."""
+
+    id: UUID
+    codebase_id: UUID
+    created_at: datetime
+    last_access: datetime
+    history: list[ConversationTurn] = Field(
+        default_factory=list,
+        max_length=20,
+        description="Conversation history (max 20 turns for token budget)"
+    )
+
+
+class SecretDetectionResult(BaseModel):
+    """Secret detection result from code scanning."""
+
+    id: UUID
+    codebase_id: UUID
+    secret_type: SecretType
+    file_path: str
+    line_number: int = Field(..., ge=1, description="Line number where secret was found")
+    redacted_placeholder: str = Field(
+        ...,
+        pattern=r"\[REDACTED_[A-Z_]+\]",
+        description="Placeholder text replacing the secret"
+    )
+    detected_at: datetime
 
 
 # =============================================================================

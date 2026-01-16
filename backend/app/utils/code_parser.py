@@ -1,10 +1,10 @@
 """Code parsing utilities using Tree-sitter."""
 
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import tree_sitter_languages as tsl
+from pydantic import BaseModel
 from tree_sitter import Language, Node, Parser
 
 from app.core.logging import get_logger
@@ -31,8 +31,7 @@ LANGUAGE_MAP: dict[str, str] = {
 }
 
 
-@dataclass
-class ParsedCode:
+class ParsedCode(BaseModel):
     """Result of parsing a code file."""
 
     file_path: str

@@ -1,12 +1,8 @@
 """LangGraph agent graph definition."""
-
-from typing import Literal
-
 from langgraph.graph import END, StateGraph
 
 from app.agents.nodes import (
     context_building_node,
-    error_handler_node,
     query_analysis_node,
     response_generation_node,
     retrieval_node,

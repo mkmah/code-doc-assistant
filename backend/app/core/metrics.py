@@ -2,7 +2,7 @@
 
 import time
 import uuid
-from typing import Callable
+from collections.abc import Callable
 
 from fastapi import Request, Response
 from fastapi.responses import Response as FastAPIResponse
@@ -60,8 +60,45 @@ query_duration_seconds = Histogram(
     "query_duration_seconds", "Time taken to process a query", ["status"]
 )
 
+# Chat-specific metrics (T055: query latency)
+chat_requests_total = Counter(
+    "chat_requests_total",
+    "Total chat requests",
+    ["status"],  # status: success|failure
+)
+
+chat_errors_total = Counter(
+    "chat_errors_total",
+    "Total chat errors",
+    ["error_type"],  # error_type: rate_limit|session_not_found|llm_error
+)
+
+chat_latency_seconds = Histogram(
+    "chat_latency_seconds",
+    "Chat endpoint latency (p50, p95, p99)",
+    buckets=[0.1, 0.5, 1.0, 2.0, 3.0, 5.0, 10.0, 30.0]  # Up to 30s
+)
+
+# Session metrics
+active_sessions = Gauge(
+    "active_sessions",
+    "Number of active chat sessions",
+)
+
+sessions_created_total = Counter(
+    "sessions_created_total",
+    "Total sessions created",
+)
+
 chunks_retrieved = Histogram(
     "chunks_retrieved", "Number of chunks retrieved per query", buckets=[1, 2, 5, 10, 20, 50, 100]
+)
+
+# Retrieval accuracy metrics (T055: retrieval accuracy)
+retrieval_accuracy_count = Counter(
+    "retrieval_accuracy_count",
+    "Retrieval accuracy tracking",
+    ["relevant"],  # relevant: true|false
 )
 
 # LLM metrics
@@ -74,6 +111,13 @@ llm_requests_total = Counter(
 llm_tokens_total = Counter(
     "llm_tokens_total",
     "Total LLM tokens used",
+    ["provider", "model", "type"],  # type: input|output
+)
+
+# Token usage metrics (T055: token usage)
+llm_tokens_used = Gauge(
+    "llm_tokens_used",
+    "LLM tokens used per request",
     ["provider", "model", "type"],  # type: input|output
 )
 
@@ -99,6 +143,13 @@ vector_store_operations_total = Counter(
 
 vector_store_operation_duration_seconds = Histogram(
     "vector_store_operation_duration_seconds", "Vector store operation latency", ["operation"]
+)
+
+# ChromaDB query duration (T055: chromadb query duration)
+chromadb_query_duration_seconds = Histogram(
+    "chromadb_query_duration_seconds",
+    "ChromaDB query latency",
+    buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0]  # 1ms to 1s
 )
 
 # Temporal workflow metrics
@@ -167,7 +218,7 @@ class MetricsMiddleware(BaseHTTPMiddleware):
 
             return response
 
-        except Exception as e:
+        except Exception:
             # Record error metrics
             http_requests_total.labels(method=method, endpoint=endpoint, status_code=500).inc()
 

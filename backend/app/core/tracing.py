@@ -5,8 +5,9 @@ It provides decorators for tracing key operations and initialization for
 exporting traces to a backend (e.g., Jaeger, OTLP).
 """
 
+from collections.abc import Callable
 from functools import wraps
-from typing import Any, Callable
+from typing import Any
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
@@ -189,6 +190,7 @@ def trace_parse(func: Callable) -> Callable:
     Adds specific attributes for parsing operations like file count,
     file types, and parsing duration.
     """
+
     @wraps(func)
     async def wrapper(*args: Any, **kwargs: Any) -> Any:
         tracer = get_tracer()
@@ -222,6 +224,7 @@ def trace_embed(func: Callable) -> Callable:
     Adds specific attributes for embedding operations like chunk count,
     embedding dimensions, and model used.
     """
+
     @wraps(func)
     async def wrapper(*args: Any, **kwargs: Any) -> Any:
         tracer = get_tracer()
@@ -263,6 +266,7 @@ def trace_retrieve(func: Callable) -> Callable:
     Adds specific attributes for retrieval operations like query text,
     top-k value, and retrieval scores.
     """
+
     @wraps(func)
     async def wrapper(*args: Any, **kwargs: Any) -> Any:
         tracer = get_tracer()
@@ -311,6 +315,7 @@ def trace_generate(func: Callable) -> Callable:
     Adds specific attributes for generation operations like prompt length,
     response length, token usage, and model used.
     """
+
     @wraps(func)
     async def wrapper(*args: Any, **kwargs: Any) -> Any:
         tracer = get_tracer()

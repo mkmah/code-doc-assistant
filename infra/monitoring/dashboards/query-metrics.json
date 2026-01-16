@@ -1,0 +1,90 @@
+{
+  "dashboard": {
+    "title": "Query Metrics",
+    "tags": ["code-doc-assistant", "queries"],
+    "timezone": "UTC",
+    "refresh": "30s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Query Latency (p50, p95, p99)",
+        "type": "graph",
+    "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(query_latency_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(query_latency_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(query_latency_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p99"
+        }
+      ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "Queries Per Second",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum(rate(chat_requests_total[1m]))",
+            "legendFormat": "QPS"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+      },
+      {
+        "id": 3,
+        "title": "Active Sessions",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "sum(active_sessions)",
+            "legendFormat": "Active Sessions"
+          }
+        ],
+        "gridPos": {"h": 4, "w": 6, "x": 0, "y": 8}
+      },
+      {
+        "id": 4,
+        "title": "Retrieval Accuracy",
+        "type": "gauge",
+        "targets": [
+          {
+            "expr": "sum(retrieval_accuracy_count{relevant=\"true\"}) / sum(retrieval_accuracy_count) * 100",
+            "legendFormat": "Accuracy %"
+          }
+        ],
+        "gridPos": {"h": 4, "w": 6, "x": 6, "y": 8}
+      },
+      {
+        "id": 5,
+        "title": "Token Usage",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum(rate(llm_tokens_total[5m]))",
+            "legendFormat": "Tokens/sec"
+          }
+        ],
+        "gridPos": {"h": 4, "w": 6, "x": 12, "y": 8}
+      },
+      {
+        "id": 6,
+        "title": "Error Rate",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum(rate(chat_errors_total[5m])) / sum(rate(chat_requests_total[5m])) * 100",
+            "legendFormat": "Error Rate %"
+          }
+        ],
+        "gridPos": {"h": 4, "w": 6, "x": 18, "y": 8}
+      }
+    ]
+  }
+}

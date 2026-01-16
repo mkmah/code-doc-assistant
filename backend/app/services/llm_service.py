@@ -1,6 +1,7 @@
 """LLM service for interacting with Anthropic Claude."""
 
-from typing import Any, AsyncIterator
+from collections.abc import AsyncIterator
+from typing import Any
 
 from anthropic import AsyncAnthropic
 
@@ -76,7 +77,7 @@ INSTRUCTIONS:
         )
 
         async with self._client.messages.stream(
-            model="claude-3-5-sonnet-20241022",
+            model="glm-4.6",
             max_tokens=4096,
             system=system_prompt.format(context=context[:50000]),  # Limit context size
             messages=messages,

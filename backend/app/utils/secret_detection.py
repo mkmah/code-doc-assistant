@@ -1,12 +1,12 @@
 """Secret detection and redaction utilities for code scanning."""
 
 import re
-from dataclasses import dataclass
 from typing import ClassVar
 
+from pydantic import BaseModel
 
-@dataclass
-class SecretDetection:
+
+class SecretDetection(BaseModel):
     """A single secret detection result."""
 
     file_path: str
@@ -17,8 +17,7 @@ class SecretDetection:
     secret_count: int
 
 
-@dataclass
-class SecretScanResult:
+class SecretScanResult(BaseModel):
     """Result of scanning code for secrets."""
 
     file_path: str
@@ -98,7 +97,9 @@ def scan_for_secrets(content: str, file_path: str) -> SecretScanResult:
     )
 
 
-def redact_secrets(content: str, scan_result: SecretScanResult | None = None) -> tuple[str, SecretScanResult]:
+def redact_secrets(
+    content: str, scan_result: SecretScanResult | None = None
+) -> tuple[str, SecretScanResult]:
     """Redact secrets from content by replacing with [REDACTED_TYPE] placeholders.
 
     Args:

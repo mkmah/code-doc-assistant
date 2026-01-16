@@ -5,6 +5,7 @@ from uuid import UUID
 
 import chromadb
 from chromadb.config import Settings as ChromaSettings
+from chromadb.utils.embedding_functions import JinaEmbeddingFunction
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
@@ -12,9 +13,6 @@ from app.models.schemas import CodeChunk
 
 settings = get_settings()
 logger = get_logger(__name__)
-
-# Collection name for code chunks
-COLLECTION_NAME = "code_chunks"
 
 
 class VectorStore:
@@ -25,8 +23,7 @@ class VectorStore:
         self._client: chromadb.ClientAPI | None = None
         self._collection: chromadb.Collection | None = None
 
-    @property
-    def client(self) -> chromadb.ClientAPI:
+    async def _get_client(self) -> chromadb.ClientAPI:
         """Get or create ChromaDB client."""
         if self._client is None:
             logger.info(
@@ -34,26 +31,35 @@ class VectorStore:
                 host=settings.chromadb_host,
                 port=settings.chromadb_port,
             )
-            self._client = chromadb.HttpClient(
+
+            self._client = await chromadb.AsyncHttpClient(
                 host=settings.chromadb_host,
                 port=settings.chromadb_port,
                 settings=ChromaSettings(
+                    chroma_client_auth_provider="chromadb.auth.token.TokenAuthClientProvider",
+                    chroma_client_auth_credentials=settings.chromadb_token,
                     anonymized_telemetry=False,
-                    allow_reset=True,
                 ),
             )
             logger.info("chromadb_connected")
         return self._client
 
-    @property
-    def collection(self) -> chromadb.Collection:
+    async def _get_collection(self) -> chromadb.Collection:
         """Get or create the code chunks collection."""
         if self._collection is None:
-            self._collection = self.client.get_or_create_collection(
-                name=COLLECTION_NAME,
-                metadata={"description": "Code chunks for semantic search"},
+            client = await self._get_client()
+
+            jinaai_ef = JinaEmbeddingFunction(
+                api_key=settings.jina_api_key,
+                model_name="jina-embeddings-v4",
             )
-            logger.info("collection_ready", collection=COLLECTION_NAME)
+
+            self._collection = await client.get_or_create_collection(
+                name=settings.chromadb_collection,
+                metadata={"description": "Code chunks for semantic search"},
+                embedding_function=jinaai_ef,
+            )
+            logger.info("collection_ready", collection=settings.chromadb_collection)
         return self._collection
 
     async def add_chunks(self, chunks: list[CodeChunk]) -> None:
@@ -69,14 +75,8 @@ class VectorStore:
             logger.warning("no_chunks_to_add")
             return
 
-        # Validate embeddings
-        for chunk in chunks:
-            if chunk.embedding is None:
-                raise ValueError(f"Chunk {chunk.id} missing embedding")
-
         # Prepare batch data
         ids = [str(chunk.id) for chunk in chunks]
-        embeddings = [chunk.embedding for chunk in chunks]
         documents = [chunk.content for chunk in chunks]
         metadatas = [
             {
@@ -92,10 +92,11 @@ class VectorStore:
             for chunk in chunks
         ]
 
+        collection = await self._get_collection()
+
         # Add to collection
-        self.collection.add(
+        await collection.add(
             ids=ids,
-            embeddings=embeddings,
             documents=documents,
             metadatas=metadatas,
         )
@@ -108,7 +109,7 @@ class VectorStore:
 
     async def query(
         self,
-        query_embedding: list[float],
+        query: str,
         codebase_id: UUID,
         top_k: int = 5,
         where: dict[str, Any] | None = None,
@@ -124,14 +125,17 @@ class VectorStore:
         Returns:
             List of matching chunks with metadata
         """
+
+        collection = await self._get_collection()
+
         # Build filter
         where_filter = {"codebase_id": str(codebase_id)}
         if where:
             where_filter.update(where)
 
         # Query collection
-        results = self.collection.query(
-            query_embeddings=[query_embedding],
+        results = await collection.query(
+            query_texts=query,
             n_results=top_k,
             where=where_filter,
         )
@@ -163,12 +167,14 @@ class VectorStore:
             codebase_id: Codebase ID to delete
         """
         # Get chunks to delete
-        results = self.collection.get(
+        collection = await self._get_collection()
+
+        results = await collection.get(
             where={"codebase_id": str(codebase_id)},
         )
 
         if results["ids"]:
-            self.collection.delete(ids=results["ids"])
+            await collection.delete(ids=results["ids"])
             logger.info(
                 "codebase_deleted",
                 codebase_id=str(codebase_id),
@@ -184,7 +190,8 @@ class VectorStore:
             True if healthy, False otherwise
         """
         try:
-            self.client.heartbeat()
+            client = await self._get_client()
+            client.heartbeat()
             return True
         except Exception as e:
             logger.error("chromadb_health_check_failed", error=str(e))

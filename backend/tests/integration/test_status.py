@@ -4,30 +4,37 @@ from uuid import uuid4
 
 import pytest
 from httpx import AsyncClient
+
+from app.db.session import AsyncSessionLocal
+from app.models.db.codebase import Codebase as DBCodebase, SourceType as DBSourceType, CodebaseStatus as DBCodebaseStatus
 from app.models.schemas import CodebaseStatus, SourceType
 
 
+@pytest.fixture
+async def db_session():
+    """Create a database session for test setup."""
+    async with AsyncSessionLocal() as session:
+        yield session
+
+
 @pytest.mark.asyncio
-async def test_get_status_during_processing(client: AsyncClient):
+async def test_get_status_during_processing(client: AsyncClient, db_session):
     """Test retrieving status while codebase is being processed."""
-    from app.services.codebase_store import get_codebase_store
-
-    codebase_store = get_codebase_store()
-
     # Create a codebase in PROCESSING state
-    codebase = codebase_store.create(
+    codebase = DBCodebase(
         name="processing-codebase",
         description="A codebase currently being processed",
-        source_type=SourceType.ZIP,
+        source_type=DBSourceType.ZIP,
         source_url=None,
         size_bytes=1000,
         workflow_id="workflow-processing",
+        status=DBCodebaseStatus.PROCESSING,
+        total_files=100,
+        processed_files=45,
     )
-
-    # Update to PROCESSING state
-    codebase.status = CodebaseStatus.PROCESSING
-    codebase.total_files = 100
-    codebase.processed_files = 45
+    db_session.add(codebase)
+    await db_session.commit()
+    await db_session.refresh(codebase)
 
     # Get status
     response = await client.get(f"/api/v1/codebase/{codebase.id}/status")
@@ -49,26 +56,23 @@ async def test_get_status_during_processing(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_get_status_completed(client: AsyncClient):
+async def test_get_status_completed(client: AsyncClient, db_session):
     """Test retrieving status for a completed codebase."""
-    from app.services.codebase_store import get_codebase_store
-
-    codebase_store = get_codebase_store()
-
     # Create a codebase in COMPLETED state
-    codebase = codebase_store.create(
+    codebase = DBCodebase(
         name="completed-codebase",
         description="A successfully processed codebase",
-        source_type=SourceType.ZIP,
+        source_type=DBSourceType.ZIP,
         source_url=None,
         size_bytes=2000,
         workflow_id="workflow-completed",
+        status=DBCodebaseStatus.COMPLETED,
+        total_files=50,
+        processed_files=50,
     )
-
-    # Update to COMPLETED state
-    codebase.status = CodebaseStatus.COMPLETED
-    codebase.total_files = 50
-    codebase.processed_files = 50
+    db_session.add(codebase)
+    await db_session.commit()
+    await db_session.refresh(codebase)
 
     # Get status
     response = await client.get(f"/api/v1/codebase/{codebase.id}/status")
@@ -90,27 +94,24 @@ async def test_get_status_completed(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_get_status_failed_with_error_message(client: AsyncClient):
+async def test_get_status_failed_with_error_message(client: AsyncClient, db_session):
     """Test retrieving status for a failed codebase with error details."""
-    from app.services.codebase_store import get_codebase_store
-
-    codebase_store = get_codebase_store()
-
     # Create a codebase in FAILED state
-    codebase = codebase_store.create(
+    codebase = DBCodebase(
         name="failed-codebase",
         description="A codebase that failed processing",
-        source_type=SourceType.ZIP,
+        source_type=DBSourceType.ZIP,
         source_url=None,
         size_bytes=1500,
         workflow_id="workflow-failed",
+        status=DBCodebaseStatus.FAILED,
+        total_files=30,
+        processed_files=10,
+        error_message="Unable to parse Python files: syntax error in module.py",
     )
-
-    # Update to FAILED state with error message
-    codebase.status = CodebaseStatus.FAILED
-    codebase.total_files = 30
-    codebase.processed_files = 10
-    codebase.error_message = "Unable to parse Python files: syntax error in module.py"
+    db_session.add(codebase)
+    await db_session.commit()
+    await db_session.refresh(codebase)
 
     # Get status
     response = await client.get(f"/api/v1/codebase/{codebase.id}/status")
@@ -133,21 +134,21 @@ async def test_get_status_failed_with_error_message(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_get_status_queued(client: AsyncClient):
+async def test_get_status_queued(client: AsyncClient, db_session):
     """Test retrieving status for a queued codebase."""
-    from app.services.codebase_store import get_codebase_store
-
-    codebase_store = get_codebase_store()
-
     # Create a codebase (defaults to QUEUED state)
-    codebase = codebase_store.create(
+    codebase = DBCodebase(
         name="queued-codebase",
         description="A codebase waiting to be processed",
-        source_type=SourceType.GITHUB_URL,
+        source_type=DBSourceType.GITHUB_URL,
         source_url="https://github.com/user/repo",
         size_bytes=0,
         workflow_id="workflow-queued",
+        status=DBCodebaseStatus.QUEUED,
     )
+    db_session.add(codebase)
+    await db_session.commit()
+    await db_session.refresh(codebase)
 
     # Get status
     response = await client.get(f"/api/v1/codebase/{codebase.id}/status")
@@ -182,26 +183,23 @@ async def test_get_status_not_found(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_get_status_progress_calculation(client: AsyncClient):
+async def test_get_status_progress_calculation(client: AsyncClient, db_session):
     """Test that progress is calculated correctly."""
-    from app.services.codebase_store import get_codebase_store
-
-    codebase_store = get_codebase_store()
-
     # Create a codebase with specific progress
-    codebase = codebase_store.create(
+    codebase = DBCodebase(
         name="progress-test",
         description="Testing progress calculation",
-        source_type=SourceType.ZIP,
+        source_type=DBSourceType.ZIP,
         source_url=None,
         size_bytes=1000,
         workflow_id="workflow-progress",
+        status=DBCodebaseStatus.PROCESSING,
+        total_files=200,
+        processed_files=75,
     )
-
-    # Set progress values
-    codebase.status = CodebaseStatus.PROCESSING
-    codebase.total_files = 200
-    codebase.processed_files = 75
+    db_session.add(codebase)
+    await db_session.commit()
+    await db_session.refresh(codebase)
 
     # Get status
     response = await client.get(f"/api/v1/codebase/{codebase.id}/status")
@@ -215,25 +213,22 @@ async def test_get_status_progress_calculation(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_get_status_zero_division_protection(client: AsyncClient):
+async def test_get_status_zero_division_protection(client: AsyncClient, db_session):
     """Test that progress calculation handles zero total_files gracefully."""
-    from app.services.codebase_store import get_codebase_store
-
-    codebase_store = get_codebase_store()
-
     # Create a codebase with no files
-    codebase = codebase_store.create(
+    codebase = DBCodebase(
         name="no-files-codebase",
         description="Codebase with no files",
-        source_type=SourceType.ZIP,
+        source_type=DBSourceType.ZIP,
         source_url=None,
         size_bytes=0,
         workflow_id="workflow-no-files",
+        total_files=0,
+        processed_files=0,
     )
-
-    # Keep total_files at 0
-    codebase.total_files = 0
-    codebase.processed_files = 0
+    db_session.add(codebase)
+    await db_session.commit()
+    await db_session.refresh(codebase)
 
     # Get status
     response = await client.get(f"/api/v1/codebase/{codebase.id}/status")

@@ -4,26 +4,35 @@ from uuid import uuid4
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
+
+from app.db.session import AsyncSessionLocal
+from app.models.db.codebase import Codebase as DBCodebase, SourceType as DBSourceType, CodebaseStatus as DBCodebaseStatus
 from app.models.schemas import SourceType
 
 
+@pytest.fixture
+async def db_session():
+    """Create a database session for test setup."""
+    async with AsyncSessionLocal() as session:
+        yield session
+
+
 @pytest.mark.asyncio
-async def test_list_codebases_pagination(client: AsyncClient):
+async def test_list_codebases_pagination(client: AsyncClient, db_session):
     """Test listing codebases with pagination."""
-    from app.services.codebase_store import get_codebase_store
-
-    codebase_store = get_codebase_store()
-
-    # Create multiple codebases
+    # Create multiple codebases in database
     for i in range(5):
-        codebase_store.create(
+        codebase = DBCodebase(
             name=f"test-codebase-{i}",
             description=f"Test codebase {i}",
-            source_type=SourceType.ZIP,
+            source_type=DBSourceType.ZIP,
             source_url=None,
             size_bytes=1000 * (i + 1),
             workflow_id=f"workflow-{i}",
         )
+        db_session.add(codebase)
+    await db_session.commit()
 
     # Test first page with limit 2
     response = await client.get("/api/v1/codebase?page=1&limit=2")
@@ -47,22 +56,20 @@ async def test_list_codebases_pagination(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_list_codebases_default_pagination(client: AsyncClient):
+async def test_list_codebases_default_pagination(client: AsyncClient, db_session):
     """Test that default pagination works correctly."""
-    from app.services.codebase_store import get_codebase_store
-
-    codebase_store = get_codebase_store()
-
-    # Create codebases
+    # Create codebases in database
     for i in range(3):
-        codebase_store.create(
+        codebase = DBCodebase(
             name=f"codebase-{i}",
             description=f"Description {i}",
-            source_type=SourceType.GITHUB_URL,
+            source_type=DBSourceType.GITHUB_URL,
             source_url=f"https://github.com/user/repo{i}",
             size_bytes=0,
             workflow_id=f"workflow-{i}",
         )
+        db_session.add(codebase)
+    await db_session.commit()
 
     # Request without pagination parameters (should use defaults)
     response = await client.get("/api/v1/codebase")
@@ -77,21 +84,19 @@ async def test_list_codebases_default_pagination(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_list_codebases_empty_page(client: AsyncClient):
+async def test_list_codebases_empty_page(client: AsyncClient, db_session):
     """Test listing codebases when page is beyond available data."""
-    from app.services.codebase_store import get_codebase_store
-
-    codebase_store = get_codebase_store()
-
     # Create only 1 codebase
-    codebase_store.create(
+    codebase = DBCodebase(
         name="single-codebase",
         description="Only codebase",
-        source_type=SourceType.ZIP,
+        source_type=DBSourceType.ZIP,
         source_url=None,
         size_bytes=1000,
         workflow_id="workflow-single",
     )
+    db_session.add(codebase)
+    await db_session.commit()
 
     # Request page 2
     response = await client.get("/api/v1/codebase?page=2&limit=10")
@@ -106,22 +111,20 @@ async def test_list_codebases_empty_page(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_list_codebases_max_limit_enforcement(client: AsyncClient):
+async def test_list_codebases_max_limit_enforcement(client: AsyncClient, db_session):
     """Test that the maximum limit of 100 is enforced."""
-    from app.services.codebase_store import get_codebase_store
-
-    codebase_store = get_codebase_store()
-
-    # Create codebases
+    # Create codebases in database
     for i in range(5):
-        codebase_store.create(
+        codebase = DBCodebase(
             name=f"codebase-{i}",
             description=f"Description {i}",
-            source_type=SourceType.ZIP,
+            source_type=DBSourceType.ZIP,
             source_url=None,
             size_bytes=1000,
             workflow_id=f"workflow-{i}",
         )
+        db_session.add(codebase)
+    await db_session.commit()
 
     # Request with limit > 100
     response = await client.get("/api/v1/codebase?limit=200")
@@ -134,28 +137,25 @@ async def test_list_codebases_max_limit_enforcement(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_get_codebase_details(client: AsyncClient):
+async def test_get_codebase_details(client: AsyncClient, db_session):
     """Test retrieving details of a specific codebase."""
-    from app.services.codebase_store import get_codebase_store
-
-    codebase_store = get_codebase_store()
-
     # Create a codebase with specific details
-    codebase = codebase_store.create(
+    codebase = DBCodebase(
         name="detailed-codebase",
         description="A codebase with detailed information",
-        source_type=SourceType.GITHUB_URL,
+        source_type=DBSourceType.GITHUB_URL,
         source_url="https://github.com/user/awesome-repo",
         size_bytes=5000,
         workflow_id="workflow-detailed",
+        status=DBCodebaseStatus.COMPLETED,
+        total_files=42,
+        processed_files=42,
+        primary_language="Python",
+        all_languages=["Python", "JavaScript", "HTML"],
     )
-
-    # Update additional fields
-    codebase.status = "completed"
-    codebase.total_files = 42
-    codebase.processed_files = 42
-    codebase.primary_language = "Python"
-    codebase.all_languages = ["Python", "JavaScript", "HTML"]
+    db_session.add(codebase)
+    await db_session.commit()
+    await db_session.refresh(codebase)
 
     # Get codebase details
     response = await client.get(f"/api/v1/codebase/{codebase.id}")
@@ -194,21 +194,20 @@ async def test_get_codebase_not_found(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_delete_codebase(client: AsyncClient):
+async def test_delete_codebase(client: AsyncClient, db_session):
     """Test deleting a codebase."""
-    from app.services.codebase_store import get_codebase_store
-
-    codebase_store = get_codebase_store()
-
     # Create a codebase
-    codebase = codebase_store.create(
+    codebase = DBCodebase(
         name="to-be-deleted",
         description="This codebase will be deleted",
-        source_type=SourceType.ZIP,
+        source_type=DBSourceType.ZIP,
         source_url=None,
         size_bytes=1000,
         workflow_id="workflow-delete",
     )
+    db_session.add(codebase)
+    await db_session.commit()
+    await db_session.refresh(codebase)
 
     # Delete the codebase
     response = await client.delete(f"/api/v1/codebase/{codebase.id}")
@@ -234,30 +233,30 @@ async def test_delete_codebase_not_found(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_list_codebases_sorting(client: AsyncClient):
+async def test_list_codebases_sorting(client: AsyncClient, db_session):
     """Test that codebases are sorted by creation date (newest first)."""
-    from app.services.codebase_store import get_codebase_store
-
-    codebase_store = get_codebase_store()
-
     # Create codebases with different timestamps
-    codebase1 = codebase_store.create(
+    codebase1 = DBCodebase(
         name="first-codebase",
         description="Created first",
-        source_type=SourceType.ZIP,
+        source_type=DBSourceType.ZIP,
         source_url=None,
         size_bytes=1000,
         workflow_id="workflow-1",
     )
+    db_session.add(codebase1)
+    await db_session.commit()
 
-    codebase2 = codebase_store.create(
+    codebase2 = DBCodebase(
         name="second-codebase",
         description="Created second",
-        source_type=SourceType.ZIP,
+        source_type=DBSourceType.ZIP,
         source_url=None,
         size_bytes=2000,
         workflow_id="workflow-2",
     )
+    db_session.add(codebase2)
+    await db_session.commit()
 
     # List codebases
     response = await client.get("/api/v1/codebase")
@@ -272,29 +271,26 @@ async def test_list_codebases_sorting(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_get_codebase_with_all_optional_fields(client: AsyncClient):
+async def test_get_codebase_with_all_optional_fields(client: AsyncClient, db_session):
     """Test retrieving a codebase with all optional fields populated."""
-    from app.services.codebase_store import get_codebase_store
-
-    codebase_store = get_codebase_store()
-
     # Create a comprehensive codebase
-    codebase = codebase_store.create(
+    codebase = DBCodebase(
         name="comprehensive-codebase",
         description="A codebase with all fields populated",
-        source_type=SourceType.ZIP,
+        source_type=DBSourceType.ZIP,
         source_url=None,
         size_bytes=10000,
         workflow_id="workflow-comprehensive",
+        status=DBCodebaseStatus.PROCESSING,
+        total_files=150,
+        processed_files=75,
+        primary_language="TypeScript",
+        all_languages=["TypeScript", "Python", "Rust"],
+        error_message=None,
     )
-
-    # Populate all fields
-    codebase.status = "processing"
-    codebase.total_files = 150
-    codebase.processed_files = 75
-    codebase.primary_language = "TypeScript"
-    codebase.all_languages = ["TypeScript", "Python", "Rust"]
-    codebase.error_message = None
+    db_session.add(codebase)
+    await db_session.commit()
+    await db_session.refresh(codebase)
 
     # Get codebase details
     response = await client.get(f"/api/v1/codebase/{codebase.id}")

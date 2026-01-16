@@ -1,7 +1,7 @@
 """FastAPI application entry point."""
 
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
 from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
@@ -18,6 +18,8 @@ from app.core.errors import (
 from app.core.logging import get_logger, setup_logging
 from app.core.metrics import MetricsMiddleware, get_metrics_router, init_metrics
 from app.core.tracing import init_tracing, shutdown_tracing
+from app.db.session import close_db, init_db
+from app.services.redis_session_store import get_redis_session_store
 
 settings = get_settings()
 logger = get_logger(__name__)
@@ -27,8 +29,15 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan manager.
 
-    Handles startup and shutdown events.
+    Handles startup and shutdown events including:
+    - Database connection initialization
+    - Redis connection initialization
+    - Graceful shutdown of all connections
+
+    Note: Session cleanup is handled by a Temporal cron workflow
+    that runs independently in the temporal worker.
     """
+
     # Setup logging
     setup_logging()
 
@@ -38,20 +47,38 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Initialize tracing
     init_tracing(service_name="code-doc-assistant-backend")
 
+    # Initialize database connection pool
+    await init_db()
+
+    # Initialize Redis connection (connection pool created on first use)
+    redis_store = get_redis_session_store()
+    await redis_store._get_redis()  # Initialize connection pool
+    logger.info("redis_connection_initialized")
+
     logger.info(
         "application_starting",
         version="1.0.0",
         log_level=settings.log_level,
         environment=settings.environment,
         tracing_enabled=settings.enable_tracing,
+        database=settings.app_db_name,
+        redis_host=settings.redis_host,
     )
 
     yield
 
     logger.info("application_shutting_down")
 
+    # Close Redis connection pool
+    await redis_store.close()
+
+    # Close database connection pool
+    await close_db()
+
     # Shutdown tracing to flush any pending spans
     shutdown_tracing()
+
+    logger.info("application_shutdown_complete")
 
 
 # Create FastAPI application

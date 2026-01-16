@@ -1,56 +1,63 @@
 """Chat endpoint for querying codebases."""
 
-from uuid import UUID
-
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from app.agents.graph import get_query_agent
 from app.agents.state import AgentState
 from app.core.logging import get_logger
-from app.models.schemas import ChatRequest, Source
-from app.services.session_store import get_session_store
+from app.core.security import limiter
+from app.models.schemas import ChatRequest
+from app.services.redis_session_store import get_redis_session_store
 
 router = APIRouter()
 logger = get_logger(__name__)
-session_store = get_session_store()
+redis_store = get_redis_session_store()
 
 
 @router.post("/chat")
-async def chat(request: ChatRequest):
+@limiter.limit("100/hour")
+async def chat(request: Request, chat_request: ChatRequest):
     """Query a codebase with streaming response.
 
+    Rate limited to 100 requests per hour per IP address.
+
     Args:
-        request: Chat request with query and codebase_id
+        request: FastAPI Request object for rate limiting
+        chat_request: Chat request with query and codebase_id
 
     Returns:
         Streaming SSE response
     """
     # Ensure session exists
-    if request.session_id:
-        session = await session_store.get_session(request.session_id)
+    if chat_request.session_id:
+        session = await redis_store.get_session(chat_request.session_id)
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
     else:
         # Create new session
-        session = await session_store.create_session(request.codebase_id)
-        request.session_id = session.session_id
+        session = await redis_store.create_session(chat_request.codebase_id)
+        chat_request.session_id = session.session_id
 
     # Initialize agent state
     state = AgentState(
-        codebase_id=str(request.codebase_id),
-        query=request.query,
-        session_id=request.session_id,
+        codebase_id=str(chat_request.codebase_id),
+        query=chat_request.query,
+        session_id=str(chat_request.session_id) if chat_request.session_id else None,
+        context="",
+        response="",
     )
 
     # Run the agent
     agent = get_query_agent()
     final_state = await agent.ainvoke(state)
 
+    final_state = AgentState(**final_state)
+
     # Check for errors
     if final_state.error:
         return StreamingResponse(
-            _error_stream(final_state.error),
+            _error_stream(final_state.error, final_state.error_metadata),
             media_type="text/event-stream",
         )
 
@@ -58,9 +65,14 @@ async def chat(request: ChatRequest):
     async def event_generator():
         """Generate SSE events for the chat response."""
         try:
+            # Send session_id first (for new sessions or follow-up requests)
+            session_data = {"type": "session_id", "session_id": str(chat_request.session_id)}
+            yield f"data: {encode_sse(session_data)}\n\n"
+
             # Stream the response content
             for chunk in final_state.response:
-                yield f"data: {encode_sse({{'type': 'chunk', 'content': chunk}})}\n\n"
+                chunk_data = {"type": "chunk", "content": chunk}
+                yield f"data: {encode_sse(chunk_data)}\n\n"
 
             # Send sources
             if final_state.sources:
@@ -73,28 +85,30 @@ async def chat(request: ChatRequest):
                     }
                     for s in final_state.sources
                 ]
-                yield f"data: {encode_sse({{'type': 'sources', 'sources': sources_data}})}\n\n"
+                sources_msg = {"type": "sources", "sources": sources_data}
+                yield f"data: {encode_sse(sources_msg)}\n\n"
 
-            # Save messages to session
-            await session_store.add_message(
-                session_id=request.session_id,
-                role="user",
-                content=request.query,
-            )
+            # Send validation results
+            if final_state.validation_results:
+                validation_msg = {"type": "validation", "validation": final_state.validation_results}
+                yield f"data: {encode_sse(validation_msg)}\n\n"
 
-            await session_store.add_message(
-                session_id=request.session_id,
-                role="assistant",
-                content=final_state.response,
-                citations=final_state.sources,
+            # Save conversation turn to Redis session
+            await redis_store.save_conversation_turn(
+                session_id=chat_request.session_id,
+                query=chat_request.query,
+                response=final_state.response,
+                sources=final_state.sources,
             )
 
             # Send done event
-            yield f"data: {encode_sse({{'type': 'done'}})}\n\n"
+            done_data = {"type": "done"}
+            yield f"data: {encode_sse(done_data)}\n\n"
 
         except Exception as e:
-            logger.error("chat_stream_error", error=str(e))
-            yield f"data: {encode_sse({{'type': 'error', 'error': 'An error occurred'}})}\n\n"
+            logger.error("chat_stream_error", error=str(e), exc_info=True)
+            error_data = {"type": "error", "error": "An error occurred"}
+            yield f"data: {encode_sse(error_data)}\n\n"
 
     return StreamingResponse(
         event_generator(),
@@ -112,25 +126,40 @@ def encode_sse(data: dict) -> str:
         JSON string for SSE
     """
     import json
-    from uuid import UUID
 
     def default_serializer(obj):
         """JSON serializer for objects not serializable by default json code."""
+        from uuid import UUID
         if isinstance(obj, UUID):
             return str(obj)
+        # Handle Pydantic models
+        if hasattr(obj, 'model_dump'):
+            return obj.model_dump()
         raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
 
-    return json.dumps(data, default=default_serializer).replace("\n", "\\n")
+    return json.dumps(data, default=default_serializer)
 
 
-async def _error_stream(error_message: str):
+async def _error_stream(error_message: str, error_metadata: dict | None = None):
     """Generate an error stream.
 
     Args:
         error_message: Error message to send
+        error_metadata: Optional detailed error information
 
     Yields:
         SSE events
     """
-    yield f"data: {encode_sse({'type': 'error', 'error': error_message})}\n\n"
-    yield f"data: {encode_sse({'type': 'done'})}\n\n"
+    error_response = {
+        "type": "error",
+        "error": error_message,
+    }
+
+    # Include error metadata if available (for debugging, not sensitive info)
+    if error_metadata:
+        error_response["error_type"] = error_metadata.get("error_type")
+        error_response["recovery_suggestion"] = error_metadata.get("recovery_suggestion")
+
+    yield f"data: {encode_sse(error_response)}\n\n"
+    done_data = {"type": "done"}
+    yield f"data: {encode_sse(done_data)}\n\n"

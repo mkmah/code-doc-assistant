@@ -10,8 +10,8 @@ scrape_configs:
   # Backend API metrics
   - job_name: 'backend'
     static_configs:
-      - targets: ['host.docker.internal:8000']
-    metrics_path: '/metrics'
+      - targets: ['backend:8000']
+    metrics_path: '/metrics/metrics'
 
   # Prometheus self-monitoring
   - job_name: 'prometheus'

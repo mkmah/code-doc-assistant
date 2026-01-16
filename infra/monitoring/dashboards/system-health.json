@@ -1,0 +1,166 @@
+{
+  "dashboard": {
+    "title": "System Health",
+    "tags": ["code-doc-assistant", "health", "infrastructure"],
+    "timezone": "UTC",
+    "refresh": "15s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Service Health Status",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "up{job=~\"code-doc-assistant.*\"}",
+            "legendFormat": "{{job}}"
+          }
+        ],
+        "gridPos": {"h": 6, "w": 24, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "CPU Usage",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum by (instance) (rate(process_cpu_seconds_total[5m])) * 100",
+            "legendFormat": "{{instance}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6}
+      },
+      {
+        "id": 3,
+        "title": "Memory Usage",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum by (instance) (process_resident_memory_bytes / 1024 / 1024 / 1024)",
+            "legendFormat": "{{instance}} - GB"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6}
+      },
+      {
+        "id": 4,
+        "title": "Disk Usage",
+        "type": "gauge",
+        "targets": [
+          {
+            "expr": "sum(node_filesystem_size_bytes{mountpoint=\"/\"} - node_filesystem_avail_bytes{mountpoint=\"/\"}) / sum(node_filesystem_size_bytes{mountpoint=\"/\"}) * 100",
+            "legendFormat": "Disk Used %"
+          }
+        ],
+        "gridPos": {"h": 4, "w": 6, "x": 0, "y": 14}
+      },
+      {
+        "id": 5,
+        "title": "Rate Limit Hits",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum(rate(rate_limit_exceeded_total[5m]))",
+            "legendFormat": "Rate Limit Hits/sec"
+          }
+        ],
+        "gridPos": {"h": 4, "w": 6, "x": 6, "y": 14}
+      },
+      {
+        "id": 6,
+        "title": "Workflow Success Rate",
+        "type": "gauge",
+        "targets": [
+          {
+            "expr": "sum(temporal_workflow_completed_total) / (sum(temporal_workflow_completed_total) + sum(temporal_workflow_failed_total)) * 100",
+            "legendFormat": "Success %"
+          }
+        ],
+        "gridPos": {"h": 4, "w": 6, "x": 12, "y": 14}
+      },
+      {
+        "id": 7,
+        "title": "System Uptime",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "max(process_start_time_seconds)",
+            "legendFormat": "Started"
+          }
+        ],
+        "gridPos": {"h": 4, "w": 6, "x": 18, "y": 14}
+      },
+      {
+        "id": 8,
+        "title": "Request Rate by Service",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum by (job) (rate(http_requests_total[5m]))",
+            "legendFormat": "{{job}}"
+          }
+        ],
+        "gridPos": {"h": 6, "w": 12, "x": 0, "y": 18}
+      },
+      {
+        "id": 9,
+        "title": "Error Rate by Service",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum by (job) (rate(http_requests_total{status=~\"5..\"}[5m]))",
+            "legendFormat": "{{job}} - 5xx Errors"
+          }
+        ],
+        "gridPos": {"h": 6, "w": 12, "x": 12, "y": 18}
+      },
+      {
+        "id": 10,
+        "title": "ChromaDB Health",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "chromadb_health",
+            "legendFormat": "ChromaDB"
+          }
+        ],
+        "gridPos": {"h": 4, "w": 6, "x": 0, "y": 24}
+      },
+      {
+        "id": 11,
+        "title": "Temporal Health",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "temporal_health",
+            "legendFormat": "Temporal"
+          }
+        ],
+        "gridPos": {"h": 4, "w": 6, "x": 6, "y": 24}
+      },
+      {
+        "id": 12,
+        "title": "Concurrent Queries",
+        "type": "gauge",
+        "targets": [
+          {
+            "expr": "concurrent_queries_active",
+            "legendFormat": "Active Queries"
+          }
+        ],
+        "gridPos": {"h": 4, "w": 6, "x": 12, "y": 24}
+      },
+      {
+        "id": 13,
+        "title": "Active Sessions",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "active_sessions",
+            "legendFormat": "Sessions"
+          }
+        ],
+        "gridPos": {"h": 4, "w": 6, "x": 18, "y": 24}
+      }
+    ]
+  }
+}

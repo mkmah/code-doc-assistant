@@ -1,33 +1,35 @@
-# Frontend Dockerfile (Multi-stage build for Bun)
-FROM oven/bun:1 AS base
+FROM oven/bun:1.3.6 AS base
+
+# Install dependencies only when needed
+FROM base AS deps
 WORKDIR /app
 
-# Install dependencies
-FROM base AS install
-RUN mkdir -p /temp/deps
-COPY package.json bun.lock* /temp/deps/
-RUN cd /temp/deps && bun install --frozen-lockfile
-RUN mkdir /temp/node_modules && mv /temp/deps/node_modules/* /temp/node_modules/
-RUN mv /temp/node_modules /app/node_modules
+# Install dependencies based on the preferred package manager
+COPY package.json bun.lock ./
+RUN bun install
 
-# Build application
-FROM base AS build
-COPY --from=install /app/node_modules /app/node_modules
+# Rebuild the source code only when needed
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+
+# Build the application
 RUN bun run build
 
-# Production image
-FROM base AS prod
-COPY --from=build /app/.output ./
-COPY --from=build /app/node_modules ./node_modules
+# Production image, copy all the files and run the server
+FROM base AS runner
+WORKDIR /app
 
 ENV NODE_ENV=production
-ENV PORT=3000
 
+# Copy only necessary files
+COPY --from=builder /app/.output ./.output
+
+# Expose the port the app will run on
 EXPOSE 3000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:3000/ || exit 1
+USER bun
 
-CMD ["bun", "run", "start"]
+# Start the Node.js server
+CMD ["bun", ".output/server/index.mjs"]

@@ -185,10 +185,10 @@ async def test_chat_citation_accuracy(client: AsyncClient, sample_codebase_id):
 async def test_chat_with_session_id(client: AsyncClient, sample_codebase_id):
     """Test that chat works with an existing session_id."""
     # First create a session
-    from app.services.session_store import get_session_store
-    session_store = get_session_store()
+    from app.services.redis_session_store import get_redis_session_store
+    redis_store = get_redis_session_store()
 
-    session = await session_store.create_session(sample_codebase_id)
+    session = await redis_store.create_session(sample_codebase_id)
 
     # Mock the agent
     mock_agent = AsyncMock()
@@ -249,10 +249,10 @@ async def test_chat_creates_new_session_without_session_id(client: AsyncClient, 
     assert response.status_code == 200
 
     # Verify session was created in the store
-    from app.services.session_store import get_session_store
+    from app.services.redis_session_store import get_redis_session_store
 
-    session_store = get_session_store()
-    sessions = await session_store.list_sessions(codebase_id=sample_codebase_id)
+    redis_store = get_redis_session_store()
+    sessions, total = await redis_store.list_sessions(codebase_id=sample_codebase_id)
     assert len(sessions) > 0
 
 
@@ -284,9 +284,9 @@ async def test_chat_error_in_agent(client: AsyncClient, sample_codebase_id):
 @pytest.mark.asyncio
 async def test_chat_saves_to_session_history(client: AsyncClient, sample_codebase_id):
     """Test that messages are saved to session history."""
-    from app.services.session_store import get_session_store
+    from app.services.redis_session_store import get_redis_session_store
 
-    session_store = get_session_store()
+    redis_store = get_redis_session_store()
 
     # Mock the agent
     mock_agent = AsyncMock()
@@ -295,7 +295,7 @@ async def test_chat_saves_to_session_history(client: AsyncClient, sample_codebas
 
     with patch("app.api.v1.chat.get_query_agent", return_value=mock_agent):
         # Create a session and send a message
-        session = await session_store.create_session(sample_codebase_id)
+        session = await redis_store.create_session(sample_codebase_id)
 
         await client.post(
             "/api/v1/chat",
@@ -307,7 +307,9 @@ async def test_chat_saves_to_session_history(client: AsyncClient, sample_codebas
         )
 
     # Verify messages were saved
-    messages = await session_store.get_messages(session.session_id)
+    messages = []
+    async for msg in redis_store.get_messages(session.session_id):
+        messages.append(msg)
     assert len(messages) >= 2  # user message + assistant message
 
     # Check user message

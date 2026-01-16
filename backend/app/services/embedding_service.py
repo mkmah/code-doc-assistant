@@ -1,8 +1,8 @@
 """Embedding service using Jina AI with OpenAI fallback."""
 
-from datetime import timedelta
-from typing import Any
+import asyncio
 
+# from datetime import timedelta
 import httpx
 from openai import AsyncOpenAI
 
@@ -17,18 +17,22 @@ class EmbeddingService:
     """Generates embeddings using Jina AI with OpenAI fallback."""
 
     def __init__(self) -> None:
+        print(f"{settings.jina_api_key=}")
         """Initialize the embedding service."""
         self._jina_client = httpx.AsyncClient(
             base_url="https://api.jina.ai/v1",
             headers={"Authorization": f"Bearer {settings.jina_api_key}"},
-            timeout=timedelta(seconds=30),
+            timeout=30.0,
         )
-        self._openai_client = AsyncOpenAI(api_key=settings.openai_api_key) if settings.openai_api_key else None
+        # self._openai_client = (
+        #     AsyncOpenAI(api_key=settings.openai_api_key) if settings.openai_api_key else None
+        # )
+        self._openai_client = None
 
     async def generate_embeddings(
         self,
         texts: list[str],
-    ) -> list[list[float]] | None:
+    ) -> list[list[float]]:
         """Generate embeddings for a list of texts.
 
         Args:
@@ -49,8 +53,9 @@ class EmbeddingService:
             embeddings = await self._generate_jina_embeddings(texts)
             logger.info("embeddings_generated_jina", count=len(embeddings))
             return embeddings
-        except Exception as e:
-            logger.warning("jina_embeddings_failed", error=str(e))
+        except httpx.HTTPStatusError as e:
+            error_msg = f"Jina API Error: {e.response.status_code} - {e.response.text}"
+            logger.warning("jina_embeddings_http_failed", error=error_msg)
 
             # Fallback to OpenAI
             if self._openai_client:
@@ -60,15 +65,43 @@ class EmbeddingService:
                     logger.info("embeddings_generated_openai", count=len(embeddings))
                     return embeddings
                 except Exception as e2:
-                    logger.error("openai_embeddings_failed", error=str(e2))
+                    logger.error("openai_embeddings_failed", error=repr(e2))
+                    raise RuntimeError(
+                        f"Embedding generation failed. Jina error: {error_msg}. OpenAI error: {repr(e2)}"
+                    ) from e2
 
-            return None
+            raise RuntimeError(
+                f"Embedding generation failed. Jina error: {error_msg}. No fallback configured."
+            ) from e
+
+        except Exception as e:
+            logger.warning("jina_embeddings_failed", error=repr(e))
+
+            # Fallback to OpenAI
+            if self._openai_client:
+                try:
+                    logger.info("generating_embeddings_openai_fallback", count=len(texts))
+                    embeddings = await self._generate_openai_embeddings(texts)
+                    logger.info("embeddings_generated_openai", count=len(embeddings))
+                    return embeddings
+                except Exception as e2:
+                    logger.error("openai_embeddings_failed", error=repr(e2))
+                    raise RuntimeError(
+                        f"Embedding generation failed. Jina error: {repr(e)}. OpenAI error: {repr(e2)}"
+                    ) from e2
+
+            raise RuntimeError(
+                f"Embedding generation failed. Jina error: {repr(e)}. No fallback configured."
+            ) from e
 
     async def _generate_jina_embeddings(
         self,
         texts: list[str],
     ) -> list[list[float]]:
-        """Generate embeddings using Jina AI.
+        """Generate embeddings using Jina AI with rate limiting.
+
+        Uses batch size of 100 with 100ms delays between batches
+        to respect API rate limits.
 
         Args:
             texts: List of text strings to embed
@@ -79,12 +112,22 @@ class EmbeddingService:
         Raises:
             httpx.HTTPStatusError: If API request fails
         """
-        # Batch requests
-        batch_size = settings.embedding_batch_size
+        # Batch size of 100 with rate limit aware delays (100ms between batches)
+        batch_size = 100
         all_embeddings = []
+        batch_delay_ms = 100  # 100ms delay between batches for rate limiting
 
         for i in range(0, len(texts), batch_size):
             batch = texts[i : i + batch_size]
+            batch_num = i // batch_size + 1
+            total_batches = (len(texts) + batch_size - 1) // batch_size
+
+            logger.info(
+                "jina_embedding_batch_start",
+                batch_num=batch_num,
+                total_batches=total_batches,
+                batch_size=len(batch),
+            )
 
             response = await self._jina_client.post(
                 "/embeddings",
@@ -100,13 +143,26 @@ class EmbeddingService:
             batch_embeddings = [item["embedding"] for item in data["data"]]
             all_embeddings.extend(batch_embeddings)
 
+            logger.info(
+                "jina_embedding_batch_complete",
+                batch_num=batch_num,
+                embeddings_count=len(batch_embeddings),
+            )
+
+            # Rate limit aware delay: 100ms between batches (except for last batch)
+            if i + batch_size < len(texts):
+                await asyncio.sleep(batch_delay_ms / 1000)  # Convert ms to seconds
+
         return all_embeddings
 
     async def _generate_openai_embeddings(
         self,
         texts: list[str],
     ) -> list[list[float]]:
-        """Generate embeddings using OpenAI (fallback).
+        """Generate embeddings using OpenAI (fallback) with rate limiting.
+
+        Uses batch size of 100 with 100ms delays between batches
+        to respect API rate limits.
 
         Args:
             texts: List of text strings to embed
@@ -117,12 +173,22 @@ class EmbeddingService:
         Raises:
             Exception: If API request fails
         """
-        # Batch requests
-        batch_size = settings.embedding_batch_size
+        # Batch size of 100 with rate limit aware delays (100ms between batches)
+        batch_size = 100
         all_embeddings = []
+        batch_delay_ms = 100  # 100ms delay between batches for rate limiting
 
         for i in range(0, len(texts), batch_size):
             batch = texts[i : i + batch_size]
+            batch_num = i // batch_size + 1
+            total_batches = (len(texts) + batch_size - 1) // batch_size
+
+            logger.info(
+                "openai_embedding_batch_start",
+                batch_num=batch_num,
+                total_batches=total_batches,
+                batch_size=len(batch),
+            )
 
             response = await self._openai_client.embeddings.create(
                 model="text-embedding-3-small",
@@ -132,9 +198,19 @@ class EmbeddingService:
             batch_embeddings = [item.embedding for item in response.data]
             all_embeddings.extend(batch_embeddings)
 
+            logger.info(
+                "openai_embedding_batch_complete",
+                batch_num=batch_num,
+                embeddings_count=len(batch_embeddings),
+            )
+
+            # Rate limit aware delay: 100ms between batches (except for last batch)
+            if i + batch_size < len(texts):
+                await asyncio.sleep(batch_delay_ms / 1000)  # Convert ms to seconds
+
         return all_embeddings
 
-    async def generate_query_embedding(self, query: str) -> list[float] | None:
+    async def generate_query_embedding(self, query: str) -> list[float]:
         """Generate embedding for a single query.
 
         Args:
@@ -144,7 +220,7 @@ class EmbeddingService:
             Embedding vector or None if failed
         """
         embeddings = await self.generate_embeddings([query])
-        return embeddings[0] if embeddings else None
+        return embeddings[0]
 
     async def close(self) -> None:
         """Close the HTTP clients."""

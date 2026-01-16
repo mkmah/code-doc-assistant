@@ -41,15 +41,9 @@ class RetrievalService:
             top_k = settings.default_top_k_results
 
         top_k = min(top_k, settings.max_top_k_results)
-
-        # Generate query embedding
-        query_embedding = await self._embedding_service.generate_query_embedding(query)
-        if not query_embedding:
-            raise RuntimeError("Failed to generate query embedding")
-
         # Search vector store
         chunks = await self._vector_store.query(
-            query_embedding=query_embedding,
+            query=query,
             codebase_id=codebase_id,
             top_k=top_k,
         )
@@ -62,7 +56,9 @@ class RetrievalService:
                     file_path=chunk["metadata"]["file_path"],
                     line_start=chunk["metadata"]["line_start"],
                     line_end=chunk["metadata"]["line_end"],
-                    snippet=chunk["content"][:200] + "..." if len(chunk["content"]) > 200 else chunk["content"],
+                    snippet=chunk["content"][:200] + "..."
+                    if len(chunk["content"]) > 200
+                    else chunk["content"],
                 )
             )
 
@@ -105,15 +101,8 @@ class RetrievalService:
             where_filter["chunk_type"] = chunk_type
         if file_path:
             where_filter["file_path"] = file_path
-
-        # Generate query embedding
-        query_embedding = await self._embedding_service.generate_query_embedding(query)
-        if not query_embedding:
-            raise RuntimeError("Failed to generate query embedding")
-
         # Search vector store with filters
         chunks = await self._vector_store.query(
-            query_embedding=query_embedding,
             codebase_id=codebase_id,
             top_k=top_k,
             where=where_filter if where_filter else None,

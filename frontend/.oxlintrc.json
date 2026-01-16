@@ -1,0 +1,43 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["react", "typescript", "unicorn", "import", "vitest", "oxc"],
+  "ignorePatterns": [
+    "**/dev-dist/**",
+    "**/src/components/**",
+    "**/src/routeTree.gen.ts",
+    "**/src/styles.css",
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/.vinxi/**"
+  ],
+  "categories": {
+    "correctness": "error"
+  },
+  "rules": {
+    "typescript/consistent-type-definitions": "error",
+    "typescript/consistent-type-imports": "error",
+    "typescript/no-unnecessary-type-assertion": "error",
+    "typescript/prefer-for-of": "warn",
+    "typescript/no-inferrable-types": "error",
+    "react/exhaustive-deps": "error",
+    "react/rules-of-hooks": "error",
+    "react/jsx-key": "error",
+    "import/no-duplicates": "error",
+    "import/first": "error",
+    "no-var": "error",
+    "prefer-const": "error",
+    "no-constant-binary-expression": "error",
+    "no-unused-vars": [
+      "warn",
+      {
+        "varsIgnorePattern": "^_",
+        "argsIgnorePattern": "^_"
+      }
+    ]
+  },
+  "settings": {
+    "react": {
+      "version": "19"
+    }
+  }
+}

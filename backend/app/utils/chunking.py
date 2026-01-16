@@ -1,7 +1,8 @@
 """Semantic code chunking utilities."""
 
-from dataclasses import dataclass
 from typing import Any
+
+from pydantic import BaseModel
 
 from app.core.logging import get_logger
 from app.models.schemas import ChunkType
@@ -10,8 +11,7 @@ from app.utils.code_parser import ParsedCode
 logger = get_logger(__name__)
 
 
-@dataclass
-class CodeChunk:
+class CodeChunk(BaseModel):
     """A semantic code chunk ready for embedding."""
 
     content: str
@@ -108,9 +108,7 @@ class CodeChunker:
         try:
             # Extract function content
             lines = full_content.split("\n")
-            func_lines = lines[
-                max(0, func["line_start"] - 1) : min(len(lines), func["line_end"])
-            ]
+            func_lines = lines[max(0, func["line_start"] - 1) : min(len(lines), func["line_end"])]
             content = "\n".join(func_lines)
 
             # Estimate tokens (rough approximation: 1 token ≈ 4 chars)
@@ -165,9 +163,7 @@ class CodeChunker:
         """
         try:
             lines = full_content.split("\n")
-            class_lines = lines[
-                max(0, cls["line_start"] - 1) : min(len(lines), cls["line_end"])
-            ]
+            class_lines = lines[max(0, cls["line_start"] - 1) : min(len(lines), cls["line_end"])]
             content = "\n".join(class_lines)
 
             estimated_tokens = len(content) // 4

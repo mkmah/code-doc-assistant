@@ -21,6 +21,18 @@ os.environ["CHROMADB_PORT"] = "8000"
 os.environ["LOG_LEVEL"] = "info"
 os.environ["ENVIRONMENT"] = "test"
 
+# Test database configuration (uses same postgres as Temporal but different database)
+os.environ["POSTGRES_HOST"] = "localhost"
+os.environ["POSTGRES_PORT"] = "5432"
+os.environ["POSTGRES_USER"] = "temporal"
+os.environ["POSTGRES_PASSWORD"] = "temporal"
+os.environ["APP_DB_NAME"] = "code_doc_assistant_test"
+
+# Test Redis configuration
+os.environ["REDIS_HOST"] = "localhost"
+os.environ["REDIS_PORT"] = "6379"
+os.environ["REDIS_DB"] = "1"  # Use separate DB for tests
+
 
 @pytest.fixture
 def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
@@ -104,21 +116,29 @@ def sample_zip_file(tmp_path):
 
 @pytest.fixture(autouse=True)
 async def clear_stores():
-    """Clear in-memory stores before each test for isolation."""
-    from app.services.codebase_store import get_codebase_store
-    from app.services.session_store import get_session_store
+    """Clear database and Redis stores before each test for isolation."""
+    from sqlalchemy import delete, text
+    from app.db.session import AsyncSessionLocal
+    from app.models.db.codebase import Codebase as DBCodebase
+    from app.services.redis_session_store import get_redis_session_store
 
-    # Clear stores before test
-    codebase_store = get_codebase_store()
-    codebase_store._codebases.clear()
+    # Clear database before test
+    async with AsyncSessionLocal() as session:
+        await session.execute(delete(DBCodebase))
+        await session.commit()
 
-    session_store = get_session_store()
-    session_store._sessions.clear()
-    session_store._messages.clear()
+    # Clear Redis before test
+    redis_store = get_redis_session_store()
+    redis = await redis_store._get_redis()
+    # Clear all keys in test DB (DB 1)
+    await redis.flushdb()
 
     yield
 
-    # Clear stores after test
-    codebase_store._codebases.clear()
-    session_store._sessions.clear()
-    session_store._messages.clear()
+    # Clear database after test
+    async with AsyncSessionLocal() as session:
+        await session.execute(delete(DBCodebase))
+        await session.commit()
+
+    # Clear Redis after test
+    await redis.flushdb()

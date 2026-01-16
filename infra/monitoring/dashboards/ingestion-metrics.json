@@ -1,0 +1,122 @@
+{
+  "dashboard": {
+    "title": "Ingestion Metrics",
+    "tags": ["code-doc-assistant", "ingestion", "temporal"],
+    "timezone": "UTC",
+    "refresh": "30s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Active Workflows",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "sum(temporal_workflow_running)",
+            "legendFormat": "Active Workflows"
+          }
+        ],
+        "gridPos": {"h": 4, "w": 8, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "Ingestion Progress",
+        "type": "gauge",
+        "targets": [
+          {
+            "expr": "avg(ingestion_progress_percent)",
+            "legendFormat": "Average Progress %"
+          }
+        ],
+        "gridPos": {"h": 4, "w": 8, "x": 8, "y": 0}
+      },
+      {
+        "id": 3,
+        "title": "Chunks Per Minute",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum(rate(chunks_created_total[1m])) * 60",
+            "legendFormat": "Chunks/min"
+          }
+        ],
+        "gridPos": {"h": 4, "w": 8, "x": 16, "y": 0}
+      },
+      {
+        "id": 4,
+        "title": "Embedding API Rate",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum(rate(embedding_requests_total[1m]))",
+            "legendFormat": "Embedding Requests/sec"
+          },
+          {
+            "expr": "sum(rate(embedding_tokens_total[1m]))",
+            "legendFormat": "Embedding Tokens/sec"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4}
+      },
+      {
+        "id": 5,
+        "title": "Files Skipped",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "sum(files_skipped_total)",
+            "legendFormat": "Files Skipped"
+          }
+        ],
+        "gridPos": {"h": 4, "w": 6, "x": 12, "y": 4}
+      },
+      {
+        "id": 6,
+        "title": "Secrets Detected",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "sum(secrets_detected_total)",
+            "legendFormat": "Secrets Found"
+          }
+        ],
+        "gridPos": {"h": 4, "w": 6, "x": 18, "y": 4}
+      },
+      {
+        "id": 7,
+        "title": "Secret Detection by Type",
+        "type": "piechart",
+        "targets": [
+          {
+            "expr": "sum by (secret_type) (secrets_detected_total)",
+            "legendFormat": "{{secret_type}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+      },
+      {
+        "id": 8,
+        "title": "Workflow Success Rate",
+        "type": "gauge",
+        "targets": [
+          {
+            "expr": "sum(temporal_workflow_completed_total) / sum(temporal_workflow_completed_total + sum(temporal_workflow_failed_total)) * 100",
+            "legendFormat": "Success Rate %"
+          }
+        ],
+        "gridPos": {"h": 4, "w": 6, "x": 0, "y": 12}
+      },
+      {
+        "id": 9,
+        "title": "Average Ingestion Time",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(ingestion_duration_seconds_bucket[5m])) by (le))",
+            "legendFormat": "p95 Ingestion Time"
+          }
+        ],
+        "gridPos": {"h": 4, "w": 6, "x": 6, "y": 12}
+      }
+    ]
+  }
+}
