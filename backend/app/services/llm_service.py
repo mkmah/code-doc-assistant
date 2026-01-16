@@ -18,7 +18,9 @@ class LLMService:
 
     def __init__(self) -> None:
         """Initialize the LLM service."""
-        self._client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+        self._client = AsyncAnthropic(
+            base_url=settings.anthropic_api_url, api_key=settings.anthropic_api_key
+        )
 
     async def generate_response(
         self,
@@ -77,7 +79,7 @@ INSTRUCTIONS:
         )
 
         async with self._client.messages.stream(
-            model="glm-4.6",
+            model=settings.anthropic_model,
             max_tokens=4096,
             system=system_prompt.format(context=context[:50000]),  # Limit context size
             messages=messages,

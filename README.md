@@ -23,10 +23,17 @@ To get the application running locally, follow these steps.
 2.  **Start Services (Docker)**
     This spins up Postgres, ChromaDB, and other infrastructure.
     ```bash
-    make docker
+    cd infra/docker
+    docker compose up -d --build
     ```
 
-Access the app at `http://localhost:3000`.
+    Wait for the services to up then access the app at `http://localhost:3000`.
+
+3.  **Stop Services (Docker)**
+    ```bash
+    cd infra/docker
+    docker compose down
+    ```
 
 ---
 

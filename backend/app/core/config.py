@@ -18,9 +18,10 @@ class Settings(BaseSettings):
     )
 
     # API Keys
+    anthropic_api_url: str = Field(default="https://api.anthropic.com", description="Anthropic API URL for Claude")
     anthropic_api_key: str = Field(..., description="Anthropic API key for Claude")
+    anthropic_model: str = Field(default="claude-3-5-sonnet-20241022", description="Anthropic model for Claude")
     jina_api_key: str = Field(..., description="Jina AI API key for embeddings")
-    openai_api_key: str = Field(default="", description="OpenAI API key for fallback embeddings")
 
     # Backend
     backend_port: int = Field(default=8000, description="Backend server port")
