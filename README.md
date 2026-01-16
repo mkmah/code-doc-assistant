@@ -49,13 +49,14 @@ The system is designed as an event-driven, asynchronous RAG pipeline capable of 
     *   Validating and extracting ZIP files.
     *   **Parsing**: Using `tree-sitter` to parse code into ASTs.
     *   **Chunking**: Splitting code into semantic chunks (functions/classes) rather than arbitrary text windows.
-    *   **Embedding**: Generating vectors using Jina AI embeddings.
+    *   **Embedding**: Generating vectors using Jina AI embeddings, the embedding function is added directly while creating the vector collection (chromadb).
     *   **Indexing**: Storing chunks in ChromaDB.
 4.  **RAG Agent (LangGraph)**: A stateful graph-based agent that orchestrates the query process:
     *   `QueryAnalysis`: Understands intent.
-    *   `Validation`: Ensures query safety.
     *   `Retrieval`: Fetches relevant code context.
+    *   `ContextBuilding`: Building context for the query.
     *   `Generation`: Synthesizes answers using Claude.
+    *   `Validation`: Ensures query safety.
 5.  **Data Storage**:
     *   **ChromaDB**: Vector store for code embeddings.
     *   **PostgreSQL**: Application state (if needed for Temporal/Users).
